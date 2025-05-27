@@ -1,6 +1,4 @@
-// AuthContext.tsx
-import React, { createContext, useState, useContext } from "react";
-import { getToken } from "@/api/storage";
+import React, { createContext, useContext, useState } from "react";
 
 interface AuthContextType {
   isAuthenticated: boolean;

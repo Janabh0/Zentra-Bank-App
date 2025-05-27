@@ -1,15 +1,51 @@
+import { useMutation } from "@tanstack/react-query";
+import axios from "axios";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
+  Alert,
+  Image,
   StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
   View,
-  Text,
-  Alert,
-  Image,
 } from "react-native";
+
+const register = async (
+  username: string,
+  password: string,
+  imageUri?: string | null
+) => {
+  const formData = new FormData();
+
+  formData.append("username", username);
+  formData.append("password", password);
+
+  if (imageUri) {
+    const fileName = imageUri.split("/").pop() || "profile.jpg";
+    const fileType = fileName.split(".").pop();
+
+    formData.append("image", {
+      uri: imageUri,
+      name: fileName,
+      type: `image/${fileType}`,
+    } as any);
+  }
+
+  const response = await axios.post(
+    "https://react-bank-project.eapi.joincoded.com/mini-project/api/auth/register",
+    formData,
+    {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    }
+  );
+
+  return response.data;
+};
 
 export default function Register() {
   const [username, setUsername] = useState("");
@@ -34,9 +70,39 @@ export default function Register() {
     }
   };
 
+  const registerMutation = useMutation({
+    mutationFn: ({
+      username,
+      password,
+      imageUri,
+    }: {
+      username: string;
+      password: string;
+      imageUri?: string | null;
+    }) => register(username, password, imageUri),
+    onSuccess: () => {
+      Alert.alert("Success", "Registration complete. Please log in.", [
+        {
+          text: "OK",
+          onPress: () => router.replace("/(auth)/Login"),
+        },
+      ]);
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        "Registration Failed",
+        error?.response?.data?.message || "Something went wrong"
+      );
+    },
+  });
+
   const handleRegister = () => {
-    // TODO: Implement register logic
-    console.log("Register pressed");
+    if (!username || !password) {
+      Alert.alert("Missing Info", "Username and password are required.");
+      return;
+    }
+
+    registerMutation.mutate({ username, password, imageUri: image });
   };
 
   const goToLogin = () => {
@@ -50,9 +116,15 @@ export default function Register() {
       <TouchableOpacity onPress={pickImage} style={styles.imagePickerContainer}>
         <View style={styles.imageContainer}>
           {image ? (
-            <Image source={{ uri: image }} style={styles.profileImage} />
+            <Image
+              source={{
+                uri: image,
+              }}
+              style={styles.profileImage}
+            />
           ) : (
-            <Text style={styles.uploadText}>Upload Photo</Text>
+            // <Text style={styles.uploadText}>Upload Photo (optional)</Text>
+            <Image source={{ uri: "../assets/default-avatar.png" }} />
           )}
         </View>
       </TouchableOpacity>
@@ -73,8 +145,14 @@ export default function Register() {
         autoCapitalize="none"
       />
 
-      <TouchableOpacity style={styles.button} onPress={handleRegister}>
-        <Text style={styles.buttonText}>Register</Text>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={handleRegister}
+        disabled={registerMutation.isPending}
+      >
+        <Text style={styles.buttonText}>
+          {registerMutation.isPending ? "Registering..." : "Register"}
+        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity onPress={goToLogin} style={styles.loginLink}>
