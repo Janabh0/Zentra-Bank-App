@@ -4,24 +4,42 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert,
-  Button,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { API_CONFIG, buildUrl } from "../../api/config";
+import { storeToken } from "../../api/storage";
 import { useAuth } from "../../context/AuthContext";
 
 const signin = async (username: string, password: string) => {
-  const response = await axios.post(
-    "https://react-bank-project.eapi.joincoded.com/mini-project/api/auth/login",
-    {
+  try {
+    const response = await axios.post(buildUrl(API_CONFIG.ENDPOINTS.LOGIN), {
       username,
       password,
+    });
+
+    const token =
+      response.data?.token ||
+      response.data?.access_token ||
+      response.data?.auth_token ||
+      response.data?.accessToken;
+
+    if (!token) {
+      throw new Error("No authentication token received from server");
     }
-  );
-  return response.data;
+
+    return token;
+  } catch (error: any) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw new Error(
+      "Login failed. Please check your credentials and try again."
+    );
+  }
 };
 
 const Login = () => {
@@ -31,29 +49,41 @@ const Login = () => {
   const router = useRouter();
 
   const loginMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       username,
       password,
     }: {
       username: string;
       password: string;
-    }) => signin(username, password),
-    onSuccess: (data) => {
+    }) => {
+      const token = await signin(username, password);
+      await storeToken(token);
+      return token;
+    },
+    onSuccess: async () => {
       setIsAuthenticated(true);
-      Alert.alert("Login Success");
-      router.replace("/");
+      router.replace("/(protected)/(tabs)/home");
     },
     onError: (error: any) => {
       Alert.alert(
         "Login Failed",
-        error?.response?.data?.message || "Invalid username or password"
+        error?.message || "Invalid username or password"
       );
     },
   });
 
+  const handleLogin = () => {
+    if (!username.trim() || !password.trim()) {
+      Alert.alert("Missing Info", "Please enter both username and password.");
+      return;
+    }
+
+    loginMutation.mutate({ username: username.trim(), password });
+  };
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
+      <Text style={styles.title}>Welcome Back</Text>
 
       <TextInput
         placeholder="Username"
@@ -61,6 +91,7 @@ const Login = () => {
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
+        editable={!loginMutation.isLoading}
       />
       <TextInput
         placeholder="Password"
@@ -68,24 +99,31 @@ const Login = () => {
         secureTextEntry
         value={password}
         onChangeText={setPassword}
-      />
-      <Button
-        title={loginMutation.isPending ? "Logging in..." : "Login"}
-        onPress={() => {
-          if (!username || !password) {
-            Alert.alert("Missing Info", "Please enter both fields.");
-            return;
-          }
-          loginMutation.mutate({ username, password });
-        }}
-        disabled={loginMutation.isPending}
+        autoCapitalize="none"
+        editable={!loginMutation.isLoading}
       />
 
       <TouchableOpacity
-        onPress={() => router.push("/(auth)/Register")}
-        style={styles.registerButton}
+        style={[
+          styles.button,
+          loginMutation.isLoading && styles.buttonDisabled,
+        ]}
+        onPress={handleLogin}
+        disabled={loginMutation.isLoading}
       >
-        <Text style={styles.registerText}>Don't have an account? Register</Text>
+        <Text style={styles.buttonText}>
+          {loginMutation.isLoading ? "Logging in..." : "Login"}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => router.push("/(auth)/Register")}
+        style={styles.registerLink}
+        disabled={loginMutation.isLoading}
+      >
+        <Text style={styles.registerText}>
+          Don't have an account? Register here
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -95,27 +133,48 @@ export default Login;
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    justifyContent: "center",
     padding: 20,
-    marginTop: 100,
+    backgroundColor: "#fff",
   },
   title: {
     fontSize: 24,
-    marginBottom: 16,
     fontWeight: "bold",
+    marginBottom: 30,
+    textAlign: "center",
+    color: "#333",
   },
   input: {
+    backgroundColor: "#f8f8f8",
     borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 10,
-    marginBottom: 12,
-    borderRadius: 5,
+    borderColor: "#ddd",
+    padding: 15,
+    marginBottom: 15,
+    borderRadius: 8,
+    fontSize: 16,
   },
-  registerButton: {
-    marginTop: 16,
+  button: {
+    backgroundColor: "#007AFF",
+    padding: 15,
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  buttonDisabled: {
+    backgroundColor: "#ccc",
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  registerLink: {
+    marginTop: 20,
     alignItems: "center",
   },
   registerText: {
-    color: "blue",
-    textDecorationLine: "underline",
+    color: "#007AFF",
+    fontSize: 16,
   },
 });

@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation } from "@tanstack/react-query";
 import axios from "axios";
 import * as ImagePicker from "expo-image-picker";
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { API_CONFIG, buildUrl } from "../../api/config";
 
 const register = async (
   username: string,
@@ -24,49 +26,78 @@ const register = async (
   formData.append("password", password);
 
   if (imageUri) {
-    const fileName = imageUri.split("/").pop() || "profile.jpg";
-    const fileType = fileName.split(".").pop();
+    try {
+      const fileName = imageUri.split("/").pop() || "profile.jpg";
+      const fileType = fileName.split(".").pop()?.toLowerCase() || "jpg";
 
-    formData.append("image", {
-      uri: imageUri,
-      name: fileName,
-      type: `image/${fileType}`,
-    } as any);
+      formData.append("image", {
+        uri: imageUri,
+        name: fileName,
+        type: `image/${fileType}`,
+      } as any);
+    } catch (error) {
+      console.error("Error preparing image:", error);
+      throw new Error("Failed to prepare image for upload");
+    }
   }
 
-  const response = await axios.post(
-    "https://react-bank-project.eapi.joincoded.com/mini-project/api/auth/register",
-    formData,
-    {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+  try {
+    const response = await axios.post(
+      buildUrl(API_CONFIG.ENDPOINTS.REGISTER),
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    if (error.response?.data?.message) {
+      throw new Error(error.response.data.message);
     }
-  );
-
-  return response.data;
+    throw new Error("Registration failed. Please try again.");
+  }
 };
 
 export default function Register() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [image, setImage] = useState<string | null>(null);
+  const [isPickingImage, setIsPickingImage] = useState(false);
   const router = useRouter();
 
   const pickImage = async () => {
+    if (isPickingImage) return;
+
     try {
+      setIsPickingImage(true);
+
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Please grant camera roll permissions to upload an image."
+        );
+        return;
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 1,
+        quality: 0.8,
+        allowsMultipleSelection: false,
       });
 
-      if (!result.canceled) {
+      if (!result.canceled && result.assets[0]) {
         setImage(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to pick image");
+      Alert.alert("Error", "Failed to pick image. Please try again.");
+    } finally {
+      setIsPickingImage(false);
     }
   };
 
@@ -91,18 +122,30 @@ export default function Register() {
     onError: (error: any) => {
       Alert.alert(
         "Registration Failed",
-        error?.response?.data?.message || "Something went wrong"
+        error?.message || "Something went wrong. Please try again."
       );
     },
   });
 
   const handleRegister = () => {
-    if (!username || !password) {
+    if (!username.trim() || !password.trim()) {
       Alert.alert("Missing Info", "Username and password are required.");
       return;
     }
 
-    registerMutation.mutate({ username, password, imageUri: image });
+    if (password.length < 6) {
+      Alert.alert(
+        "Invalid Password",
+        "Password must be at least 6 characters long."
+      );
+      return;
+    }
+
+    registerMutation.mutate({
+      username: username.trim(),
+      password,
+      imageUri: image,
+    });
   };
 
   const goToLogin = () => {
@@ -113,18 +156,19 @@ export default function Register() {
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
 
-      <TouchableOpacity onPress={pickImage} style={styles.imagePickerContainer}>
+      <TouchableOpacity
+        onPress={pickImage}
+        style={styles.imagePickerContainer}
+        disabled={isPickingImage || registerMutation.isLoading}
+      >
         <View style={styles.imageContainer}>
           {image ? (
-            <Image
-              source={{
-                uri: image,
-              }}
-              style={styles.profileImage}
-            />
+            <Image source={{ uri: image }} style={styles.profileImage} />
           ) : (
-            // <Text style={styles.uploadText}>Upload Photo (optional)</Text>
-            <Image source={{ uri: "../assets/default-avatar.png" }} />
+            <View style={styles.defaultImageContainer}>
+              <Ionicons name="person-circle-outline" size={60} color="#666" />
+              <Text style={styles.uploadText}>Tap to upload photo</Text>
+            </View>
           )}
         </View>
       </TouchableOpacity>
@@ -135,6 +179,7 @@ export default function Register() {
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
+        editable={!registerMutation.isLoading}
       />
       <TextInput
         placeholder="Password"
@@ -143,19 +188,29 @@ export default function Register() {
         onChangeText={setPassword}
         secureTextEntry
         autoCapitalize="none"
+        editable={!registerMutation.isLoading}
       />
 
       <TouchableOpacity
-        style={styles.button}
+        style={[
+          styles.button,
+          registerMutation.isLoading && styles.buttonDisabled,
+        ]}
         onPress={handleRegister}
-        disabled={registerMutation.isPending}
+        disabled={registerMutation.isLoading}
       >
         <Text style={styles.buttonText}>
-          {registerMutation.isPending ? "Registering..." : "Register"}
+          {registerMutation.isLoading
+            ? "Creating Account..."
+            : "Create Account"}
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={goToLogin} style={styles.loginLink}>
+      <TouchableOpacity
+        onPress={goToLogin}
+        style={styles.loginLink}
+        disabled={registerMutation.isLoading}
+      >
         <Text style={styles.loginText}>
           Already have an account? Login here
         </Text>
@@ -191,39 +246,50 @@ const styles = StyleSheet.create({
     alignItems: "center",
     overflow: "hidden",
   },
+  defaultImageContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   profileImage: {
     width: "100%",
     height: "100%",
   },
   uploadText: {
     color: "#666",
-    fontSize: 14,
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 4,
   },
   input: {
+    backgroundColor: "#f8f8f8",
     borderWidth: 1,
     borderColor: "#ddd",
     padding: 15,
     marginBottom: 15,
-    borderRadius: 5,
-    width: "100%",
+    borderRadius: 8,
+    fontSize: 16,
   },
   button: {
     backgroundColor: "#007AFF",
     padding: 15,
-    borderRadius: 5,
+    borderRadius: 8,
     alignItems: "center",
     marginTop: 10,
+  },
+  buttonDisabled: {
+    backgroundColor: "#ccc",
   },
   buttonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
   loginLink: {
     marginTop: 20,
+    alignItems: "center",
   },
   loginText: {
     color: "#007AFF",
-    textAlign: "center",
+    fontSize: 16,
   },
 });

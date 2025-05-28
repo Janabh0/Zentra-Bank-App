@@ -1,9 +1,18 @@
 import { Redirect, Stack } from "expo-router";
-import { useContext } from "react";
-import AuthContext from "../../context/AuthContext";
+import React from "react";
+import { ActivityIndicator, View } from "react-native";
+import { useAuth } from "../../context/AuthContext";
 
 export default function AuthLayout() {
-  const { isAuthenticated } = useContext(AuthContext);
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
 
   if (isAuthenticated) {
     return <Redirect href="/(protected)/(tabs)/home" />;
@@ -13,7 +22,11 @@ export default function AuthLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
+        contentStyle: { backgroundColor: "#fff" },
       }}
-    />
+    >
+      <Stack.Screen name="Login" options={{ headerShown: false }} />
+      <Stack.Screen name="Register" options={{ headerShown: false }} />
+    </Stack>
   );
 }

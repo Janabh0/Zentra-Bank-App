@@ -3,6 +3,8 @@ module.exports = function (api) {
   return {
     presets: ["babel-preset-expo"],
     plugins: [
+      "@babel/plugin-transform-export-namespace-from",
+      "react-native-reanimated/plugin",
       [
         "module-resolver",
         {
@@ -10,6 +12,17 @@ module.exports = function (api) {
           alias: {
             "@": "./",
           },
+          extensions: [
+            ".ios.ts",
+            ".android.ts",
+            ".ts",
+            ".ios.tsx",
+            ".android.tsx",
+            ".tsx",
+            ".jsx",
+            ".js",
+            ".json",
+          ],
         },
       ],
     ],
